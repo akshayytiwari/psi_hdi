@@ -1,0 +1,273 @@
+---
+word_document: default
+title: "Meta-analysis of studies estimating SARS-CoV-2 asymptomatic infection
+after adjusting for sensitivity, specificity, and symptom overlap"
+output:
+  word_document: default
+---
+
+```{r}
+rm(list = ls())
+```
+
+```{r}
+library(tidyverse)
+```
+
+#  Data preparation
+## Data extraction
+This data is exactly the same as the one that can be downloaded from Serotracker website.
+```{r}
+# Serotracker data
+path_data <- "~/ubuntu_research/Research/psi_hdi/Data/serotracker/"
+setwd(path_data)
+df <- read.csv("serotracker_full_data.csv")
+
+```
+
+Retaining relevant columns
+```{r}
+df <- df %>% select(
+  source_name,
+  source_type,
+  estimate_grade,
+  country,
+  state,
+  city,
+  study_inclusion_criteria,
+  study_exclusion_criteria,
+  sex,
+  sampling_start_date,
+  sampling_end_date,
+  population_group,
+  age,
+  denominator_value,
+  serum_pos_prevalence,
+  seroprev_95_ci_lower,
+  seroprev_95_ci_upper,
+  sampling_method,
+  test_name,
+  test_manufacturer,
+  test_type,
+  isotypes,
+  antibody_target,
+  test_validation,
+  sensitivity,
+  specificity,
+  first_author,
+  url
+)
+
+# Changing the country names
+df <- df %>% 
+  mutate(country = case_when(
+    country == "United States of America" ~ "US",
+    country == "United Kingdom of Great Britain and Northern Ireland" ~ "UK",
+    country == "Iran (Islamic Republic of)" ~ "Iran",
+    TRUE ~ country
+  ))
+# Saving the filtered data
+# setwd(path_data)
+# write.csv(df, "serotracker_filtered_data.csv", row.names = FALSE)
+```
+`source_name` refers to the study name, and is unique for a study. We therefore,\n
+filtering out studies based on it.
+
+```{r}
+n_total <- length(unique(df$source_name))
+n_total
+```
+On 08 Dec, 2025, I find 2844 unique studies in the data.\n
+Next, we will filtering out studies based on the following criteria:\n
+1. Sample frame: `Household and community samples`, and `Multiple general populations`, and `Multiple populations`\n
+2. Denominator value >= 500\n
+3. Study period: starting from 2020-01-30 to 2020-12-31
+
+```{r}
+df_filter <- df %>% 
+  filter(
+    population_group %in% c(
+      "Household and community samples",
+      "Multiple general populations",
+      "Multiple populations"),
+    denominator_value >= 500,
+    sampling_start_date >= as.Date("2020-01-30"), 
+    sampling_end_date <= as.Date("2020-12-31"),
+    sex == "All",
+    age %in% c(
+      "Adults (18-64 years)",
+      "Multiple groups")
+    )
+nrow(df)
+
+# reorder the columns of the dataframe in the following order: 
+# country, first author, source_name, estimate_grade, source_type,....
+df_filter <- df_filter %>% select(
+  country,
+  first_author,
+  source_name,
+  estimate_grade,
+  source_type,
+  everything()
+)
+# length(unique(df$source_name))
+# df <- df %>% mutate(
+#   Country = case_when(Country == "United States of America" ~ "US",
+#                       Country == "United Kingdom of Great Britain and Northern Ireland" ~ "UK",
+#                       Country == "Iran (Islamic Republic of)" ~ "Iran",
+#                       TRUE ~ Country)
+# )
+
+# df1 <- df %>% filter(
+#   !Country %in% df_base$country
+# )
+
+# df1_national <- df1 %>% filter(
+#   Grade.of.Estimate.Scope == "National"
+# )
+# nrow(df1_national)
+
+# df1_regional <- df1 %>% filter(
+#   Grade.of.Estimate.Scope == "Regional"
+# )
+# nrow(df1_regional)
+
+# df1_local <- df1 %>% filter(
+#   Grade.of.Estimate.Scope == "Local"
+# )
+# nrow(df1_local)
+```
+
+There are studies condiucted at different geographical levels in a country.\n
+In such cases, if a study is already conducted at a national level, then we \n
+skipped the regional and local level studies from that country.\n
+Similarly, if a study is conducted at a regional level, then we skipped the\n
+local level studies from that country/region.
+
+```{r}
+df_national <- df_filter %>%
+  filter(estimate_grade == "National")
+
+# df_regional <- df_filter %>% 
+#   filter(estimate_grade == "Regional") %>% 
+#   filter(!country %in% df_national$country)
+# 
+# df_local <- df_filter %>% 
+#   filter(estimate_grade == "Local") %>% 
+#   filter(!country %in% df_national$country) %>%
+#   filter(!country %in% df_regional$country)
+# 
+# # Estimating total number of unique studies
+# n_final <- length(unique(c(df_national$source_name,
+#                           df_regional$source_name,
+#                           df_local$source_name)))
+# n_final
+# 
+# # Merging the dataframes
+# df_final <- rbind(df_national, df_regional, df_local)
+# length(unique(df_final$source_name))
+# 
+# # Exporting unique set of studies
+# df_final_unique <- df_final %>%
+#   distinct(source_name, .keep_all = TRUE)  # Keeps only first instance of each study
+# 
+# setwd(path_data)
+# write.csv(df_final_unique, "filtered_unique_studies.csv", row.names = FALSE)
+```
+
+I will export the studies, review them, and check if they can be included or not.\n
+If included, then we will not go through the regional or local studies from the \n
+same country.
+
+```{r}
+
+df_national_unique <- df_national %>% 
+  distinct(source_name, .keep_all = TRUE)   # keeps only first instance of each study
+
+nrow(df_national_unique)
+setwd(path_data)
+write.csv(df_national_unique, "national_studies.csv", row.names = FALSE)
+```
+There were 112 unique national studies.
+
+Now, we will look for regional studies from the countries which do not have national studies,\n
+except some countries conducted at regional level but claims to be representative of the whole country.\n
+```{r}
+path_data2 <- "~/ubuntu_research/Research/psi_hdi/Data/with_adjustment_data"
+setwd(path_data2)
+
+df2 <- read.csv("pa_meta11.csv")
+countries_national_df2 <- df2 %>% 
+  filter(scope.of.estimate == "National") %>% select(country)
+
+df_regional <- df_filter %>% 
+  filter(estimate_grade == "Regional") %>% 
+  filter(!country %in% countries_national_df2$country[-c("US")])
+
+df_regional_US <- df_filter %>% 
+  filter(estimate_grade == "Regional") %>% 
+  filter(country == "US")
+
+df_regional <- rbind(df_regional, df_regional_US)
+# Finding unique regional studies
+df_regional_unique <- df_regional %>% 
+  distinct(source_name, .keep_all = TRUE)   # keeps only first instance of each study
+
+# Export the dataset
+setwd(path_data)
+write.csv(df_regional_unique, "regional_studies.csv", row.names = FALSE)
+
+```
+## Local studies
+```{r}
+countries_regional_df2 <- df2 %>% 
+  filter(scope.of.estimate == "Regional") %>% select(country)
+
+df_local <- df_filter %>% 
+  filter(estimate_grade == "Local") %>% 
+  filter(!country %in% countries_regional_df2$country) %>%
+  filter(!country %in% countries_national_df2$country)
+
+# Finding unique local studies
+df_local_unique <- df_local %>% 
+  distinct(source_name, .keep_all = TRUE)
+
+# Export the dataset
+setwd(path_data)
+write.csv(df_local_unique, "local_studies.csv", row.names = FALSE)
+```
+I have gone through all the studies and selected a few of them based on the inclusion/exclusion criteria.\n
+There's column in each of the national, regional, and local studies csv files, and the included studies \n
+are marked as 'included/Included' in remarks column. Now, we will merge all the included studies into one dataset.\n
+
+```{r}
+setwd(path_data)
+df_national_included <- read.csv("national_studies_modified.csv") %>%
+  filter(remarks == "included" | remarks == "Included")
+
+df_regional_included <- read.csv("regional_studies_modified.csv") %>%
+  filter(remarks == "included" | remarks == "Included")
+
+df_local_included <- read.csv("local_studies_modified.csv") %>%
+  filter(remarks == "included" | remarks == "Included")
+
+df_final_included <- rbind(df_national_included,
+                           df_regional_included,
+                           df_local_included)
+head(df_final_included)
+
+# Order columns in the following order: country, first_author, source_name, estimate_grade, source_type,....
+df_final_included <- df_final_included %>% select(
+  country, first_author, source_name, estimate_grade, source_type, everything()
+)
+
+# order the dataframe by country name
+df_final_included <- df_final_included %>% arrange(country)
+
+# Export the final csv file
+setwd(path_data)
+write.csv(df_final_included, "final_included_studies.csv", row.names = FALSE)
+
+```
+
+
