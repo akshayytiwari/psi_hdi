@@ -1,0 +1,30 @@
+country,article,test_name,test_type,test_manufacturer,alpha,alpha_l,alpha_u,sens_alpha_param,sens_beta_param,beta,beta_l,beta_u,spec_alpha_param,spec_beta_param
+Andorra,Royo-Cebrecos et al.,2019-nCoV IgG/IgM Antibody Detection Kit,LFIA,Zhuhai Livzon Diagnostics Inc,0.920,0.840,0.960,72.727,6.993,1.000,0.950,1.000,29.870,0.200
+Brazil,Menezes et al.,SARS-CoV-2 rapid point-of-care test,LFIA,"Wondfo Biotech Co., Guangzhou, China",0.848,0.814,0.878,100.000,17.283,1.000,0.978,0.997,68.332,0.200
+Cameroon,Nwosu et al.,Panbio COVID-19 IgG rapid test,LFIA,Abbott Laboratories,0.915,0.832,0.965,61.838,6.094,0.935,0.897,0.962,100.000,6.594
+Canada,Tang et al.,NA,Author designed (ELISA) -Spike,NA,0.980,0.891,1.000,30.170,0.899,0.990,0.925,1.000,38.961,0.699
+Chile,Vial et al.,Elecsys® Anti‐SARS‐CoV‐2,ELISA,Roche Diagnostics,0.990,0.970,1.000,100.000,0.799,0.998,0.997,0.999,100.000,0.200
+China,Li et al.,Micro-neutralization (MN) assays,Neutralization assay,Author designed,0.950,0.824,0.999,23.776,1.499,1.000,0.977,1.000,65.335,0.200
+Colombia,Garay et al.,INgezim® COVID 19 DR test,ELISA,Eurofins Ingenasa,0.926,0.873,0.958,100.000,8.192,0.992,0.971,0.998,100.000,0.699
+Denmark,Espenhain et al.,Wantai SARS-CoV-2 Total Ab ELISA,ELISA,Beijing Wantai Biological,0.967,0.924,0.986,100.000,3.696,0.995,0.987,0.998,100.000,0.200
+France,Rouquette et al.,Anti-SARS-CoV-2 ELISA IgG,ELISA,Euroimmun,1.000,0.916,1.000,17.583,0.200,0.977,0.919,0.996,61.439,1.798
+Germany,Santos-Hövener et al.,Anti-SARS-CoV-2 ELISA IgG,ELISA,Euroimmun,0.883,0.830,0.921,100.000,13.187,0.992,0.980,0.997,100.000,0.400
+Guinea,Soumah et al.,xMAP® SARS‑CoV‑2 Multi-Antigen IgG Assay,Multiplex assay,"Luminex Corp, Austin, TX, USA",1.000,0.940,1.000,24.775,0.200,1.000,0.952,1.000,31.169,0.200
+Hungary,Merkely et al.,Abbott Architect SARS-CoV-2 IgG,CLIA,Abbott Laboratories,1.000,0.959,1.000,36.364,0.200,0.996,0.990,0.999,100.000,0.200
+India,Murhekar et al.,Abbott Architect SARS-CoV-2 IgG,CLIA,Abbott Laboratories,1.000,0.959,1.000,36.364,0.200,0.996,0.990,0.999,100.000,0.200
+Iran,Shakiba et al.,VivaDiag COVID-19 IgM/IgG Rapid Test,LFIA,VivaChek Biotech (Hangzhou) Co. Ltd,0.833,0.646,0.958,17.682,3.696,1.000,1.000,1.000,100.000,0.200
+Ireland,Heavey et al.,Abbott Architect SARS-CoV-2 IgG,CLIA,Abbott Laboratories,0.939,0.863,0.980,60.939,4.296,1.000,0.991,1.000,100.000,0.200
+Italy,Pagani et al.,Prima Lab SA Covid-19 IgG Rapid test,LFIA,"Prima Lab, Switzerland",0.974,0.909,0.993,56.244,1.898,0.959,0.948,0.968,100.000,2.997
+Kenya,Ngere et al.,Wantai SARS-CoV-2 Total Ab ELISA,ELISA,Beijing Wantai Biological,0.980,0.949,0.992,100.000,1.998,0.990,0.925,1.000,38.961,0.699
+Maldives,Abdul-Raheem et al.,VITROS anti-SARS- CoV-2 IgG antibody,CLIA,Ortho Clinical Diagnostics Inc.,0.900,0.887,1.000,97.203,7.193,1.000,0.954,1.000,32.468,0.200
+Mexico,Basto-Abreu,Roche Elecsys Anti-SARS-CoV-2pan-immunoglobulin immunoassay test,CLIA,Roche Diagnostics,0.920,0.886,0.945,100.000,8.192,0.995,0.974,0.999,100.000,0.600
+Netherlands,Vos et al.,NA,ELISA,NA,0.844,0.759,0.903,81.219,15.585,1.000,0.990,1.000,100.000,0.200
+Nigeria,Okpala et al.,Realy Tech SARS-CoV-2 Antibodies Rapid Test Device,NA,,0.980,0.949,0.992,100.000,1.998,0.990,0.925,1.000,38.961,0.699
+Pakistan,Nisar et al.,Elecsys® Anti‐SARS‐CoV‐2,CLIA,Roche Diagnostics,0.972,0.954,0.984,100.000,2.098,0.998,0.993,1.000,100.000,0.200
+Peru,Díaz-Vélez et al.,Coretest COVID-19 IgM/IgG Ab Test,LFIA,Core Technology,0.667,0.490,0.782,25.275,13.587,0.970,0.943,0.982,100.000,2.697
+Portugal,Canto e Castro et al.,Multiple types,CLIA,Siemens Heathineers,0.981,0.965,0.990,100.000,1.199,0.999,0.994,1.000,100.000,0.200
+Senegal,Talla et al.,NA,Multiple,,0.805,0.618,0.926,19.481,4.995,0.986,0.922,0.999,42.657,0.899
+Spain,Pérez-Gómez et al.,Abbott Architect SARS-CoV-2 IgG,CMIA,Abbott Laboratories,0.906,0.881,0.926,100.000,9.491,0.993,0.990,0.995,100.000,0.200
+Switzerland,Richard et al.,Anti-SARS-CoV-2 ELISA IgG,ELISA,Euroimmun,0.930,0.788,0.995,22.078,1.898,1.000,1.000,1.000,100.000,0.200
+UK,Ward et al.,Coronavirus Antibody Rapid Test,LFIA,Fortress Diagnostics,0.844,0.705,0.935,31.369,6.094,0.986,0.971,0.994,100.000,0.799
+US,Sullivan et al.,Platelia SARS-CoV-2 Total Ab assay,ELISA,Bio-rad,0.980,0.895,0.996,33.267,0.999,0.993,0.983,0.997,100.000,0.300
