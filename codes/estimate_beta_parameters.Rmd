@@ -1,0 +1,158 @@
+---
+title: "Estimating Corrected Psi Values from Serosurvey Data"
+author: "Your Name"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    theme: cerulean
+    highlight: tango
+  pdf_document:
+    toc: true
+    number_sections: true
+    latex_engine: xelatex
+    geometry: margin=1in
+    fontsize: 11pt
+    mainfont: "Times New Roman"
+    sansfont: "Arial"
+    monofont: "Courier New"
+    citation_package: natbib
+params:
+  serosurvey_data: NULL
+  correction_factors: NULL
+  psi_estimation_method: "default"
+  output_format: "html"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(tidyverse)
+library(readr)
+library(tidyr)
+library(broom)
+library(readxl)
+library(here)
+```
+
+## Importing dataset
+```{r import-data}
+# Load serosurvey test data
+
+df_test <- read_excel(
+  here("data", "for_calculations", "test_data_v1.xlsx"),
+  sheet = 1,
+  na = c("NA", "", "N/A")
+)
+```
+
+## Cleaning dataset
+
+```{r}
+write_csv(
+  df_scope,
+  here("data", "for_calculations", "study_scope_v1.csv")
+)
+# removing columns "scope_of_estimate" and "areas" from df_test
+df_test_edited <- df_test %>%
+  select(
+    country, article, test_name, test_type, test_manufacturer,
+    alpha, alpha_l, alpha_u,
+    beta, beta_l, beta_u
+  )
+view(df_test_edited)
+```
+
+## Estimating 95% CI of sensitivity and specificity where missing
+
+Some of the studies did not have data of confidence intervals of sensitivity and specificity.\n
+For those studies, 95% CIs will be found using weakly informative prior.
+```{r}
+# Sourcinf weakly informative prior function
+source(here("codes", "weakly_informative_prior.R"))
+
+# Finding studies with lacking CI data
+df_missing_ci <- df_test_edited %>%
+  filter(is.na(alpha_l) | is.na(alpha_u) | is.na(beta_l) | is.na(beta_u))
+view(df_missing_ci)
+
+get_ci_from_prior <- function(mu, kappa, level = 0.95){
+  wp <- weak_prior(mu, kappa)
+  qbeta(
+    c((1 - level)/2, 1 - (1- level)/2),
+    shape1 = wp$alpha,
+    shape2 = wp$beta
+  )
+}
+
+kappa_weak <- 20
+
+df_test_edited <- df_test_edited %>% 
+  rowwise() %>% 
+  mutate(
+    # sensitivity CI
+    alpha_ci = if(is.na(alpha_l) | is.na(alpha_u))
+      list(get_ci_from_prior(alpha, kappa_weak))
+    else
+      list(c(alpha_l, alpha_u)),
+    
+    alpha_l = alpha_ci[1],
+    alpha_u = alpha_ci[2],
+    
+    # specificity CI
+    beta_ci = if(is.na(beta_l) | is.na(beta_u))
+      list(get_ci_from_prior(beta, kappa_weak))
+    else
+      list(c(beta_l, beta_u)),
+    
+    beta_l = beta_ci[1],
+    beta_u = beta_ci[2]
+  ) %>%
+  ungroup() %>% 
+  select(-alpha_ci, -beta_ci)
+```
+
+
+## Estimating Beta distribution parameters for sensitivity and specificity
+
+Beta distribution parameters for test sensitivity and specificity were estimated by matching the reported mean and 95% uncertainty intervals to the corresponding 2.5%, 50%, and 97.5% quantiles of a Beta distribution via grid search.
+```{r}
+source(here("codes", "beta_dis.R"))
+
+df_test_edited <- df_test_edited %>% 
+  rowwise() %>% 
+  mutate(
+    # sensitivity beta parameters
+    sens_beta = list(
+      estimate_beta(
+        c(alpha_l, alpha, alpha_u)
+      )
+    ),
+    sens_alpha_param = sens_beta$alpha,
+    sens_beta_param = sens_beta$beta,
+    
+    # specificity beta parameters
+    spec_beta = list(
+      estimate_beta(
+        c(beta_l, beta, beta_u)
+  )
+    ),
+    spec_alpha_param = spec_beta$alpha,
+    spec_beta_param = spec_beta$beta
+  ) %>%
+  ungroup() %>%
+  select(-sens_beta, -spec_beta)
+
+# exporting the cleaned dataset
+# write_csv(
+#   df_test_edited,
+#   here("data", "for_calculations", "test_beta_v1.csv")
+# )
+
+```
+
+
+
+
+
+
