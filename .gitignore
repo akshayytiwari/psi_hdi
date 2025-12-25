@@ -1,0 +1,10 @@
+# Ignore anything above repo accidentally referenced
+../*
+
+# R / analysis noise
+.Rhistory
+.RData
+.Rproj.user/
+
+# OS / tools
+.ipynb_checkpoints/
