@@ -1,0 +1,195 @@
+---
+title: Dependence of psi on recall period, age distribution, and number of symptoms
+---
+
+```{r}
+library(here)
+library(ggplot2)
+library(dplyr)
+```
+
+## Correlation with median/mean age
+
+### Obtaining the estimates of mean/median age
+```{r}
+df <- read.csv(here("data", "for_calculations", "with_mc_estimates.csv"))
+# Set working directory
+# setwd(path1)  # Replace with your actual folder path
+setwd(here("data", "for_calculations"))
+# List all CSV files starting with "age_"
+age_files <- list.files(pattern = "^age_.*\\.csv$")
+
+# Initialize a result data frame
+median_ages <- data.frame(
+  file = character(),
+  median_age = numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Loop over all age distribution files
+for (file in age_files) {
+  setwd(here("data", "for_calculations"))
+  df <- read.csv(file)
+  
+  cum_n <- cumsum(df$n)
+  total_n <- sum(df$n)
+  half_n <- total_n / 2
+  
+  median_group <- which(cum_n >= half_n)[1]
+  
+  if (median_group == 1) {
+    prev_cum <- 0
+    lower_limit <- df$age_l[median_group]
+  } else {
+    prev_cum <- cum_n[median_group - 1]
+    lower_limit <- df$age_l[median_group]
+  }
+  
+  group_size <- df$n[median_group]
+  group_width <- df$age_u[median_group] - df$age_l[median_group] + 1
+  
+  median_age <- lower_limit + ((half_n - prev_cum) / group_size) * group_width
+  
+  # Store result
+  median_ages <- rbind(median_ages, data.frame(
+    file = file,
+    median_age = median_age
+  ))
+}
+
+# View result
+print(median_ages)
+
+# Optionally write to CSV
+# write.csv(median_ages, "median_ages_summary.csv", row.names = FALSE)
+
+df$psi <- psi
+df$psi_l <- psi_l
+df$psi_u <- psi_u
+
+```
+
+### Correlation
+```{r}
+# Import data of predictors
+df_predictors <- read.csv(here("data", "predictors", "predictors_values.csv"))
+
+df <- read.csv(here("data", "for_calculations", "with_mc_estimates.csv"))
+# Correlation between psi_c and median_age
+cor <- cor.test(df$mean_median_age, df$psi_c, method = "spearman")
+# This automatically removes countries with missing values
+cor
+
+p5 <- ggplot(df, aes(x=mean_median_age, y=psi_c)) +
+  geom_point(size=1.5, colour='black')+
+  # geom_smooth(method = "lm", se = FALSE, color = "darkred") +
+  theme_minimal()  +  # theme_minimal() + 
+  scale_y_continuous(breaks = seq(0, 1, by = 0.25), limits = c(0, 1.03), 
+                     expand = c(0, 0), labels = c(0.00, 0.25, 0.50, 0.75, 1.00)) +
+  theme_minimal() +
+  theme(text = element_text(family = "Helvetica"),
+    axis.text = element_text(size = s_text, colour = "black"),
+    axis.title = element_blank(),
+        axis.ticks = element_line(linewidth = width_tick, colour = "black"),
+        axis.ticks.length = unit(length_tick, "cm"),
+        panel.border = element_rect(colour = "black", fill = NA, 
+                                    size = width_border),
+        legend.position = "none")
+
+p5
+
+
+# Correlation between psi and median_age
+cor <- cor.test(df$mean_median_age, df$psi, method = "spearman")
+# This automatically removes countries with missing values
+cor
+
+cor <- cor.test(df_predictors$hdi, df$psi, method = "spearman")
+# This automatically removes countries with missing values
+cor
+
+cor <- cor.test(df_predictors$dma, df$psi, method = "spearman")
+# This automatically removes countries with missing values
+cor
+
+p6 <- ggplot(df, aes(x=mean_median_age, y=psi)) +
+  geom_point(size=1.5, colour='black', alpha = 1)+
+  theme_minimal() +  # theme_minimal() + 
+  scale_y_continuous(breaks = seq(0, 1, by = 0.25), limits = c(0, 1.03), 
+                     expand = c(0, 0), labels = c(0.00, 0.25, 0.50, 0.75, 1.00)) +
+ theme_minimal() +
+  theme(text = element_text(family = "Helvetica"),
+    axis.text = element_text(size = s_text, colour = "black"),
+    axis.title = element_blank(),
+        axis.ticks = element_line(linewidth = width_tick, colour = "black"),
+        axis.ticks.length = unit(length_tick, "cm"),
+        panel.border = element_rect(colour = "black", fill = NA, 
+                                    size = width_border),
+        legend.position = "none")
+
+p6
+
+# There are two estimates of median age present in the dataset: 1. Median age of
+# the sample of the studies 2. Median age (DMA) of the country to which the studies belong to. This is present as dma in df_predictors
+# Finding how close these two estimates are
+cor <- cor.test(df$mean_median_age, df_predictors$dma, method = "spearman")
+cor
+
+# Plotting distribution of median age of sample and DMA
+p7 <- ggplot() +
+  geom_density(
+    data = df,
+    aes(x = mean_median_age, fill = "Median age (studies)"),
+    alpha = 0.5
+  ) +
+  geom_density(
+    data = df_predictors,
+    aes(x = dma, fill = "DMA"),
+    alpha = 0.5
+  ) +
+  
+  scale_fill_manual(
+    values = c(
+      "Median age (studies)" = "blue",
+      "DMA" = "red"
+    ),
+    name = NULL   # removes legend title
+  ) +
+  
+  theme_minimal() +
+  theme(
+    text = element_text(family = "Helvetica"),
+    axis.text = element_text(size = s_text, colour = "black"),
+    axis.title = element_blank(),
+    axis.ticks = element_line(linewidth = width_tick, colour = "black"),
+    axis.ticks.length = unit(length_tick, "cm"),
+    panel.border = element_rect(colour = "black", fill = NA, size = width_border)) +
+  labs(x = "Median Age", y = "Density")
+
+print(p7)
+
+p7
+```
+
+## Performing regression of `psi_c` and `psi` on median age
+
+```{r}
+
+attach(df)
+df$psi[which.max(df$psi)] <- 0.999
+df$psi_c_logit <- log(psi_c/(1-psi_c))
+df$psi_logit <- log(psi/(1-psi))
+
+# Regression
+model_psi_c <- lm(psi_c ~ mean_median_age, data = df)
+summary(model_psi_c)
+confint(model_psi_c)
+
+model_psi <- lm(psi ~ mean_median_age, data = df)
+summary(model_psi)
+confint(model_psi)
+
+
+
+```
+

@@ -17,7 +17,7 @@ This data is exactly the same as the one that can be downloaded from Serotracker
 
 ```{r}
 # Serotracker data
-path_data <- "~/ubuntu_research/Research/psi_hdi/Data/serotracker/"
+path_data <- "~/ubuntu_research/Research/psi_hdi/data/serotracker/"
 setwd(path_data)
 df <- read.csv("serotracker_full_data.csv")
 ```
@@ -193,10 +193,10 @@ local level studies from that country/region.\n
 ```{r}
 df_national <- df_filter %>%
   filter(estimate_grade == "National")
-nrow(df_national_unique)
+nrow(df_national)
 
 setwd(path_data)
-write.csv(df_national_unique, "national_studies.csv", row.names = FALSE)
+write.csv(df_national, "national_studies.csv", row.names = FALSE)
 ```
 There were 112 unique national studies. \n
 I exported the studies, reviewed them, and check if they could be included or not.\n
@@ -307,6 +307,8 @@ df_final_included <- rbind(df_national_included,
                            df_local_included)
 head(df_final_included)
 
+setwd(path_data)
+write.csv(df_final_included, "final_included_studies.csv", row.names = FALSE)
 
 ```
 

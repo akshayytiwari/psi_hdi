@@ -1,0 +1,153 @@
+---
+title: "Estimation of corrected psi"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    theme: cosmo
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+# rm(list = ls())
+library(tidyverse)
+library(reshape2)
+library(ggrepel)
+library(here)
+library(readxl)
+source(here("codes/01_formalism.R"))
+source(here("codes/04_monte_carlo.R"))
+source(here("codes/05_plot_distributions.R"))
+source(here("codes/06_correlation_eta.R"))
+source(here("codes/07_eta_vs_phic.R"))
+source(here("codes/08_eta_rsq_calculation.R"))
+source(here("codes/09_misc_correlation.R"))
+
+```
+
+# Load data
+```{r}
+df <- read_excel(
+  here("data", "for_calculations", "data_main_v1.xlsx"),
+  sheet = 1,
+  na = c("NA", "", "N/A")
+)
+```
+
+## Estimating distributions of rho_c, psi_c, phi_c, and psi
+
+We will perform Monte Carlo simulations to estimate the 25th, 50th, and 75th percentiles of the distributions.
+```{r}
+
+# Ensuring that all the numbers have no decimal places
+df <- df %>% 
+  mutate(across(c(n, sp, asym_sp, sym_sp, asym_sn, sn, sym_sn), round))
+
+df <- df %>% 
+  rowwise() %>% 
+  mutate(mc = list(monte_carlo(n, sp, sn, 100000,
+                               rho_c, psi_c, phi_c,
+                               alpha_a, alpha_b, beta_a, beta_b))) %>%
+  mutate(
+    rho_c_l = quantile(mc$rho_c, probs = 0.25, na.rm = TRUE),
+    rho_c_mc = quantile(mc$rho_c, probs = 0.5, na.rm = TRUE),
+    rho_c_u = quantile(mc$rho_c, probs = 0.75, na.rm = TRUE),
+    
+    psi_c_l = quantile(mc$psi_c, probs = 0.25, na.rm = TRUE),
+    psi_c_mc = quantile(mc$psi_c, probs = 0.5, na.rm = TRUE),
+    psi_c_u = quantile(mc$psi_c, probs = 0.75, na.rm = TRUE),
+    
+    phi_c_l = quantile(mc$phi_c, probs = 0.25, na.rm = TRUE),
+    phi_c_mc = quantile(mc$phi_c, probs = 0.5, na.rm = TRUE),
+    phi_c_u = quantile(mc$phi_c, probs = 0.75, na.rm = TRUE),
+    
+    psi_l = quantile(mc$psi, probs = 0.25, na.rm = TRUE),
+    psi = quantile(mc$psi, probs = 0.5, na.rm = TRUE),
+    psi_u = quantile(mc$psi, probs = 0.75, na.rm = TRUE),
+    
+    eta_l = quantile(mc$eta, probs = 0.25, na.rm = TRUE),
+    eta = quantile(mc$eta, probs = 0.5, na.rm = TRUE),
+    eta_u = quantile(mc$eta, probs = 0.75, na.rm = TRUE)
+    ) %>%
+  
+  ungroup()
+
+# Exporting the dataset
+df <- df %>% 
+  select(-mc) %>% 
+  mutate(psi_with_ci = paste0(round(psi, 2), " (", round(psi_l, 2), ", ", round(psi_u, 2), ")"))
+write.csv(df, here("data", "for_calculations", "with_mc_estimates.csv"), row.names = FALSE)
+```
+
+
+# Statistical comparisons
+```{r}
+cat("Median ψ_c:", median(df$psi_c, na.rm = TRUE), "\n")
+cat("Median ψ:", median(df$psi, na.rm = TRUE), "\n")
+
+wilcox_test <- wilcox.test(df$psi - df$psi_c,
+                           mu = 0, alternative = "greater",
+                           conf.int = TRUE)
+print(wilcox_test)
+```
+
+# Uncertainty in psi vs sample size
+```{r}
+df$rel_width_psi <- (df$psi_u - df$psi_l)/df$psi
+cor_sample <- cor.test(df$n, df$rel_width_psi, method = "spearman")
+print(cor_sample)
+
+# plot
+p_width_vs_n <- plot_width_vs_n(df)
+p_width_vs_n
+```
+#################################### To be modified ###############################
+# Figure S6 - psi vs recall period
+```{r}
+df_recall <- read.csv(here("data/data_recall.csv"))
+df$recall_period <- df_recall$recall_period_calculated
+
+cor_recall <- cor.test(df$recall_period, df$psi, method = "spearman")
+cor_recall
+
+# plot
+p_recall_vs_psi <- plot_recall_vs_psi(df)
+p_recall_vs_psi
+```
+
+# Figure S7 and S8 - Symptoms matrix heatmap and correlation with number of symptoms
+```{r}
+# Heatmap
+symptom_csv <- here("data/symptom_matrix.csv")
+p_symptom_matrix <- plot_symptom_matrix(symptom_csv)
+p_symptom_matrix
+
+# Association of psi and psi_c with number of symptoms reported in the studies
+cor_sym_psi <- cor.test(df$psi, df$num_sym, method = "spearman")
+cor_sym_psi
+
+cor_sym_phi_c <- cor.test(df$phi_c, df$num_sym, method = "spearman")
+cor_sym_phi_c
+
+## Plots
+p_sym_psi <- plot_sym_cor(df, df$psi, "psi")
+p_sym_psi
+p_sym_phi_c <- plot_sym_cor(df, df$phi_c, "phi_c")
+p_sym_phi_c
+```
+# Figure S9 - Association with age of participants
+```{r}
+cor_age_psi <- cor.test(df$mean_median_age, df$psi, method = "spearman")
+cor_age_psi
+cor_age_psi_c <- cor.test(df$mean_median_age, df$psi_c, method = "spearman")
+cor_age_psi_c
+
+# Plots
+p_age_vs_psi <- plot_age_vs_psi(df, df$psi, "psi")
+p_age_vs_psi
+p_age_vs_psi_c <- plot_age_vs_psi(df, df$psi_c, "psi_c")
+p_age_vs_psi_c
+```
+
+
+

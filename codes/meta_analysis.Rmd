@@ -1,0 +1,879 @@
+---
+title: "Meta-analysis of asymptomatic proportion"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    theme: cosmo
+---
+  
+```{r, include=FALSE}
+rm(list = ls())       # to remove variables from 'Environment'
+```
+
+```{r, include=FALSE}
+library(metafor)     # for meta-analysis
+library(tidyverse)
+library(boot)
+library(MASS)
+library(car)
+library(gridExtra)
+library(here)
+library(reshape2)   
+source(here("codes/05_plot_distributions.R"))
+```
+
+# 1. Data exploration
+## 1.1. Loading the data
+``` {r, inlude=FALSE}
+data <- read.csv(here("data", "for_calculations", "with_mc_estimates.csv"), 
+                 header = TRUE)
+```
+
+## 1.3. Violin plots of `phi_c`, `alpha`, and `beta` (Figure S1)
+```{r}
+# Convert data to long format for violin plot
+data_long <- melt(data, measure.vars = c("rho_c", "phi_c", "alpha", "beta"))
+
+p_violin_rho_c <- plot_violin(data_long, "rho_c", "olivedrab3")
+p_violin_rho_c
+
+p_violin_phi_c <- plot_violin(data_long, "phi_c", "orchid3")
+p_violin_phi_c
+
+plot_violin_alpha <- plot_violin(data_long, "alpha", "skyblue")
+plot_violin_alpha
+
+plot_violin_beta <- plot_violin(data_long, "beta", "orange")
+plot_violin_beta
+
+# Print medians of rho_c and phi_c
+cat("Median of phi_c:", median(data$phi_c), "\n")
+cat("Median of alpha:", median(data$alpha), "\n")
+cat("Median of beta:", median(data$beta), "\n")
+
+```
+## 1.4. Other information
+```{r}
+
+# Total number of sampled population, seropositives, and asymptomatic seropositives
+print(sum(data$n))
+print(sum(data$sp))
+print(sum(data$asym_sp))
+```
+
+Using code file `estimate_psi.Rmd`, we calculated psi. We will use these estimates throughout the study, and mention crude estimates when required. The corrected estimates are present in the data file.
+
+# 2. Random-Effects modeling of `psi`
+
+## Obtaining corrected number of seropositives and number of asymptomatic seropositives
+```{r}
+# Using 'with()' function to get the corrected seroprevalence
+data <- data %>% 
+  filter(!country %in% c("Andorra"))
+data$rho <- with(data,
+                 (rho_c + beta - 1) / (alpha + beta - 1))
+
+data$sp_num_adj <- round(data$rho * data$n)
+data$asym_sp_num_adj <- round(data$psi * data$sp_num_adj)
+```
+
+
+## 2.1. Model
+```{r, include=TRUE}
+# Model
+random <- rma.uni(xi = asym_sp_num_adj, ni = sp_num_adj, data = data,
+                  measure = "PLO", method = "PM")        
+random
+
+# Pooled psi
+predict(random, transf=transf.ilogit)
+```
+
+## 2.2. Forest plot (Figure 2)
+```{r, eval=FALSE}
+
+par(mar=c(4,4,1,2))
+forest(random, slab = paste(data$country), annotate=FALSE, order = "obs",
+       at = seq(0,1, by=0.2), xlim=c(-0.26,1), addpred = TRUE,
+       refline=predict(random, transf=transf.ilogit)$pred, shade= NA,
+       transf=transf.ilogit, cex=0.8)
+op <- par(cex = 0.75, font = 2)
+par(op)
+
+plt2 <- forest(
+  random,
+  slab = paste(data$country),
+  annotate = FALSE,
+  order = "obs",
+  at = seq(0, 1, by = 0.2),
+  xlim = c(-0.26, 1),
+  addpred = TRUE,
+  refline = predict(random, transf = transf.ilogit)$pred,
+  transf = transf.ilogit,
+  cex = 0.8
+)
+
+```
+## 2.3. Weights assigned to the included studies (Table S2)
+```{r}
+wi <- data.frame(Country = data$country,
+                 weight = round(weights(random),2))
+wi
+
+# Creating a dataframe of countries with weights and exporting it
+df_weight <- data.frame(country = data$country,
+                        weight = weights(random))
+write.csv(df_weight, here("data", "for_calculations", "study_weights.csv"), row.names = FALSE)
+```
+
+
+# 3. Meta-regression
+
+## 3.1. Scaling of predictors
+```{r}
+# Import data of predictors
+df_predictors <- read.csv(here("data", "predictors", "predictors_values.csv"))
+
+df_predictors <- df_predictors %>% 
+  filter(!country %in% c("Andorra"))
+# Adding dma, hdi, and cvdr into the main dataframe
+data$dma <- df_predictors$dma
+data$hdi <- df_predictors$hdi
+data$cvdr <- df_predictors$cvdr
+data$age_65 <- df_predictors$age_65
+data$hdi_class <- df_predictors$hdi_class
+
+# data$age_65_s <- scale(data$age_65, center = TRUE)
+data$dma_s <- scale(data$dma, center = TRUE)
+data$hdi_s <- scale(data$hdi, center=TRUE)
+data$cvdr_s <- scale(data$cvdr, center=TRUE)
+```
+
+## 3.2. Correlation matrix
+```{r dpi = 400, fig.height=5, fig.width=6, echo=FALSE}
+
+data_cor <- data.frame(data$cvdr, data$dma, data$hdi)
+# data_cor <- data3[,]
+# Correlation matrix function
+panel.plot <- function(x, y) {
+  usr <- par("usr"); on.exit(par(usr))
+  par(usr = c(0, 1, 0, 1))
+  ct <- cor.test(x, y, method = "spearman")
+  sig <- symnum(ct$p.value, corr = FALSE, na = FALSE,
+                cutpoints = c(0, 0.001, 0.01, 0.05, 0.1, 1),
+                symbols = c("***", "**", "*", ".", " "))
+  r <- ct$estimate
+  rt <- format(r, digits=2)[1]
+  cex <- 0.5/strwidth(rt)
+  
+  text(.5, .5, rt, cex=0.75+1*abs(r))
+  text(0.8,0.8,sig,cex=cex)
+}
+
+#panel of histograms
+panel.hist <- function(x, ...){
+  usr <- par("usr"); on.exit(par(usr))
+  par(usr = c(usr[1:2], 0, 1.5))
+  h <- hist(x, plot = FALSE)
+  breaks <- h$breaks
+  len <- length(breaks)
+  y <- h$counts/max(h$counts)
+  rect(breaks[-len], 0, breaks[-1], y, col = "lightblue")
+  # lines(density(x), col = "violet", lwd = 2)
+}
+
+#panel of scatterplots
+panel.scat <- function(x, y){
+  points(x,y, pch = 19, cex = 1, col = "coral", axes=FALSE)
+  lines(lowess(x, y), col = "blue",lwd = 1.5)
+}
+
+#Plot
+
+plot_cor <- pairs(data_cor,
+                  lower.panel = panel.scat,
+                  upper.panel = panel.plot,
+                  diag.panel = panel.hist,
+                  labels = c("CVDR", "DMA", "HDI"),
+                  gap = 0.5)
+print(plot_cor)
+
+```
+## 3.3. Model with DMA as predictor
+```{r}
+# model
+m1 <- rma(xi = asym_sp_num_adj, ni = sp_num_adj, mods= ~ dma,
+          data = data, measure = "PLO", method = "PM")
+m1
+
+# p-value of the predictor
+coef_table <- summary(m1)$b
+se_table   <- summary(m1)$se
+z_table    <- summary(m1)$zval
+
+# Calculate exact p-values manually
+pvals <- 2 * (1 - pnorm(abs(z_table)))
+pvals
+
+
+```
+
+## 3.4. Model with HDI as predictor
+```{r}
+# model
+m2 <- rma(xi = asym_sp_num_adj, ni = sp_num_adj, mods= ~ hdi,
+          data = data, measure = "PLO", method = "PM")
+m2
+
+coef_table <- summary(m2)$b
+se_table   <- summary(m2)$se
+z_table    <- summary(m2)$zval
+
+# Calculate exact p-values manually
+pvals <- 2 * (1 - pnorm(abs(z_table)))
+pvals
+```
+
+## 3.5.Model with CVDR as predictor
+```{r}
+# model
+m3 <- rma(xi = asym_sp_num_adj, ni = sp_num_adj, mods= ~ cvdr,
+          data = data, measure = "PLO", method = "PM")
+m3
+
+coef_table <- summary(m3)$b
+se_table   <- summary(m3)$se
+z_table    <- summary(m3)$zval
+
+# Calculate exact p-values manually
+pvals <- 2 * (1 - pnorm(abs(z_table)))
+pvals
+```
+## 3.6. Model with age 65 as predictor
+```{r}
+# model
+m4 <- rma(xi = asym_sp_num_adj, ni = sp_num_adj, mods= ~ age_65,
+          data = data, measure = "PLO", method = "PM")
+m4
+
+coef_table <- summary(m4)$b
+se_table   <- summary(m4)$se
+z_table    <- summary(m4)$zval
+
+# Calculate exact p-values manually
+pvals <- 2 * (1 - pnorm(abs(z_table)))
+pvals
+
+```
+## 3.6.1 Model with sample median age as predictor
+```{r}
+# model
+m5 <- rma(xi = asym_sp_num_adj, ni = sp_num_adj, mods= ~ mean_median_age,
+          data = data, measure = "PLO", method = "PM")
+m5
+
+coef_table <- summary(m5)$b
+se_table   <- summary(m5)$se
+z_table    <- summary(m5)$zval
+
+# Calculate exact p-values manually
+pvals <- 2 * (1 - pnorm(abs(z_table)))
+pvals
+
+```
+
+## 3.7. Bubble plots
+### 3.7.1. Bubble plot with HDI (Figure 3)
+```{r}
+# prediction of the model
+m2_pred <- predict(m2, newmods = seq(0.4,1, length.out = nrow(data)), 
+                   transf=transf.ilogit)
+
+# Bubble plot
+bubble_hdi <- data.frame(data$country, data$psi, data$psi_l, data$psi_u,
+                         data$hdi, weights(m2),
+                         m2_pred$pred, m2_pred$ci.lb, m2_pred$ci.ub,
+                         m2_pred$pi.lb, m2_pred$pi.ub,
+                         newmods = seq(0.4,1, length.out = nrow(data)), data$hdi_class)
+colnames(bubble_hdi) <- c('country','pa','palo','paup','hdi','weight',
+                          'pred','predlo','predup','predlo1','predup1','pred_hdi',
+                          'hdi_class')
+
+fig_hdi <- ggplot(bubble_hdi, aes(pred_hdi,pred)) +
+  geom_ribbon(aes(ymin=predlo1, ymax=predup1), alpha = 0.2) +
+  geom_ribbon(aes(ymin=predlo, ymax=predup), alpha = 0.45) +
+  geom_line(aes(x=pred_hdi, y=pred), size=1, color="black") +
+  geom_point(aes(hdi,pa, label=country, size=2, fill=hdi_class),
+             alpha=0.95, colour= "black", pch=21) +
+  geom_text_repel(aes(x = hdi, y = pa, label = country), angle = 90, 
+                  size = 4) +
+  geom_errorbar(aes(x = hdi, ymin = palo, ymax =
+                      paup),color="black",width=0.005,size=0.5) +
+  
+  theme_bw()+ xlim(0.4,1) + ylim(0, 1) +
+  labs(x = "HDI", y = "psi") +
+  theme(axis.text = element_text(face="bold", size = 11),
+        axis.title = element_blank(),
+        panel.background = element_rect(fill = "transparent"),
+        plot.background = element_rect(fill='transparent', color=NA),
+        panel.border = element_rect(colour = "black", fill=NA, size=0.75),
+        legend.position = "none"
+  ) +
+  scale_fill_manual(values=c("Low"="darkgreen","Medium"="cyan",
+                              "High"="tomato", "Very High"="purple"))
+
+print(fig_hdi)
+```
+
+### 3.7.2. Bubble plot with DMA (Figure S4A)
+```{r}
+m1_pred <- predict(m1, newmods = seq(min(data$dma), max(data$dma), length.out = nrow(data)),
+                   transf=transf.ilogit)
+
+bubble_dma <- data.frame(data$country, data$psi, data$psi_l, data$psi_u,
+                         data$dma, weights(m1),
+                         m1_pred$pred, m1_pred$ci.lb, m1_pred$ci.ub,
+                         m1_pred$pi.lb, m1_pred$pi.ub,
+                         newmods = seq(min(data$dma), max(data$dma), length.out = nrow(data)))
+colnames(bubble_dma) <- c('country','pa','palo','paup','dma','weight',
+                          'pred','predlo','predup','predlo1','predup1','pred_dma')
+
+fig_dma <- ggplot(bubble_dma, aes(pred_dma, pred)) +
+  geom_line(aes(y=predup1), linetype="dotted", color="black") +
+  geom_line(aes(y=predlo1), linetype="dotted", color="black") +
+  geom_line(aes(y=predup), linetype="dashed", color="black") +
+  geom_line(aes(y=predlo), linetype="dashed", color="black") +
+  geom_errorbar(aes(x = dma, ymin = palo, ymax = paup),color="black",width=0.5, size=0.4) +
+  geom_line(aes(x=pred_dma, y=pred), size=0.75, color="black") +
+  geom_point(aes(dma, pa, label=country), size=2.5, alpha=0.95, colour= "black", 
+             pch=21, fill = "darkgrey") +
+  # geom_text_repel(aes(x = dma, y = pa, label = country), angle = 90, 
+  #                 size = 4) +
+  theme_bw() + ylim(0, 1.001) +
+  labs(x = "DMA", y = "psi") +
+  theme(axis.text = element_text(face="bold", size = 11),
+        axis.title = element_blank(),
+        panel.background = element_rect(fill = "transparent"),
+        plot.background = element_rect(fill='transparent', color=NA),
+        panel.border = element_rect(colour = "black", fill=NA, size=0.75),
+        legend.position = "none"
+  ) 
+print(fig_dma)
+```
+### 3.7.3. Bubble plot with CVDR (Figure S4B)
+```{r}
+m3_pred <- predict(m3, newmods = seq(min(data$cvdr), max(data$cvdr), length.out = nrow(data)),
+                   transf=transf.ilogit)
+
+bubble_cvdr <- data.frame(data$country, data$psi, data$psi_l, data$psi_u,
+                          data$cvdr, weights(m3),
+                          m3_pred$pred, m3_pred$ci.lb, m3_pred$ci.ub,
+                          m3_pred$pi.lb, m3_pred$pi.ub,
+                          newmods = seq(min(data$cvdr), max(data$cvdr), length.out = nrow(data)))
+colnames(bubble_cvdr) <- c('country','pa','palo','paup','cvdr','weight',
+                           'pred','predlo','predup','predlo1','predup1','pred_cvdr')
+
+fig_cvdr <- ggplot(bubble_cvdr, aes(pred_cvdr, pred)) +
+  geom_line(aes(y=predup1), linetype="dotted", color="black") +
+  geom_line(aes(y=predlo1), linetype="dotted", color="black") +
+  geom_line(aes(y=predup), linetype="dashed", color="black") +
+  geom_line(aes(y=predlo), linetype="dashed", color="black") +
+  geom_errorbar(aes(x = cvdr, ymin = palo, ymax = paup),color="black",width=120, size=0.4) +
+  geom_line(aes(x=pred_cvdr, y=pred), size=0.75, color="black") +
+  geom_point(aes(cvdr, pa, label=country), size=2.5, alpha=0.95, colour= "black", 
+             pch=21, fill = "darkgrey") +
+  # geom_text_repel(aes(x = cvdr, y = pa, label = country), angle = 90, 
+  #                 size = 4) +
+  theme_bw() + ylim(0, 1.001) +
+  labs(x = "CVDR", y = "psi") +
+  theme(axis.text = element_text(face="bold", size = 11),
+        axis.title = element_blank(),
+        panel.background = element_rect(fill = "transparent"),
+        plot.background = element_rect(fill='transparent', color=NA),
+        panel.border = element_rect(colour = "black", fill=NA, size=0.75),
+        legend.position = "none"
+  )
+print(fig_cvdr)
+```
+### 3.7.3. Bubble plot with age_65
+```{r}
+m4_pred <- predict(m4, newmods = seq(min(data$age_65), max(data$age_65), length.out = nrow(data)),
+                   transf=transf.ilogit)
+
+bubble_age_65 <- data.frame(data$country, data$psi, data$psi_l, data$psi_u,
+                            data$age_65, weights(m4),
+                            m4_pred$pred, m4_pred$ci.lb, m4_pred$ci.ub,
+                            m4_pred$pi.lb, m4_pred$pi.ub,
+                            newmods = seq(min(data$age_65), max(data$age_65), length.out = nrow(data)))
+colnames(bubble_age_65) <- c('country','pa','palo','paup','age_65','weight',
+                             'pred','predlo','predup','predlo1','predup1','pred_age_65')
+
+fig_age65 <- ggplot(bubble_age_65, aes(pred_age_65, pred)) +
+  geom_line(aes(y=predup1), linetype="dotted", color="black") +
+  geom_line(aes(y=predlo1), linetype="dotted", color="black") +
+  geom_line(aes(y=predup), linetype="dashed", color="black") +
+  geom_line(aes(y=predlo), linetype="dashed", color="black") +
+  geom_point(aes(age_65, pa, label=country), size=2.5, alpha=0.95, colour= "black", 
+             pch=21, fill = "darkgrey") +
+  geom_errorbar(aes(x = age_65, ymin = palo, ymax = paup),color="black",width=0.25, size=0.4) +
+  geom_line(aes(x=pred_age_65, y=pred), size=0.75, color="black") +
+  theme_bw() + ylim(0, 1.001) +
+  labs(x = "Age >= 65 years", y = "psi") +
+  theme(axis.text = element_text(colour = "black", size = 11),
+        panel.background = element_rect(fill = "transparent"),
+        plot.background = element_rect(fill='transparent', color=NA),
+        panel.border = element_rect(colour = "black", fill=NA, size=0.75),
+        legend.position = "none"
+  ) 
+print(fig_age65)
+```
+
+# 4. Bootstrapping for computing R square
+
+## 4.1. CIs for R sq using bootstrap
+```{r}
+samples <- 500
+predictor <- data.frame(cbind(data$hdi, data$dma, data$cvdr, data$age_65))
+# A dataframe containing the values of the predictors for all the studies
+df_R2_ci <- as.data.frame(matrix(NA, nrow = ncol(predictor), ncol = 3))
+# A dataframe whose columns would be mean of R2, low CI, and upper CI for each
+# of the boot sample
+df_R2    <- as.data.frame(matrix(NA, nrow = samples, ncol = ncol(predictor)))
+# A dataframe whose columns will be the R2 values of HDI, DMA, and CVDR for all the 
+# samples
+
+for (i in 1:length(predictor)){
+  boot.fn = function(data, index)
+    return((rma(xi = asym_sp_num_adj, ni = sp_num_adj, mods= ~ predictor[,i],
+                data = data, measure = "PLO", method = "PM", subset=index))$R2)
+  set.seed(1)
+  boot_res <- boot(data, boot.fn, samples)
+  boot_res$t0
+  vec <- boot_res$t
+  ci_up <- boot_res$t0 + 1.96*sd(vec)  # Lower bound of the CI
+  ci_lo <- boot_res$t0 - 1.96*sd(vec)  # Upper bound of the CI
+  c(ci_lo, ci_up)
+  df_R2_ci[i,1] <- boot_res$t0
+  df_R2_ci[i,2] <- ci_lo
+  df_R2_ci[i,3] <- ci_up
+  df_R2[,i] <- vec
+}
+colnames(df_R2) <- c("hdi", "dma", "cvdr", "age65")
+colnames(df_R2_ci) <- c("mean_R2", "ci_lo", "ci_up")
+df_R2_ci$pred <- c("hdi", "dma", "cvdr", "age65")
+df_R2_ci$pred <- factor(df_R2_ci$pred, levels = unique(df_R2_ci$pred))
+
+# Comparing mean of R2 for HDI, DMA, CVDR
+plt <- ggplot(df_R2_ci[1:3,]) +
+  geom_bar(aes(x = pred, y = mean_R2), stat = "identity", color = "black", fill = "grey") +
+  geom_errorbar(aes(x = pred, ymin = ci_lo, ymax = ci_up), color="black",width=0.2,size=1) +
+  theme_bw() + 
+  scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, by = 20)) +
+  theme(panel.background = element_rect(fill = "transparent"),
+        plot.background = element_rect(fill='transparent', color=NA),
+        panel.border = element_rect(colour = "black", fill=NA, size=0.75),
+        legend.position = "none"
+  ) 
+plt
+# Paired Samples Wilcoxon Test to check the significance of difference between hdi and dma
+wilcox_hdi_dma <- wilcox.test(df_R2$hdi, df_R2$dma)
+wilcox_hdi_dma
+```
+Null hypothesis: The difference between HDI and DMA is equal to zero\n
+Since the p-value is 0.0115, which is less than the common threshold of 0.05,\n 
+the test indicates a statistically significant difference between the hdi and dma columns.\n
+Instead of comparing the absolute values of R2, I checked how far is the difference\n
+in R2 of the predictors (assuming R2(HDI) > R2(DMA) > R2(CVDR)) from zero.
+
+## 4.2. Finding the difference of R^2 with all the predictors
+```{r}
+samples <- 500
+# hdi
+boot.fn = function(data, index){
+  m1 <- rma(xi = asym_sp_num_adj, ni = sp_num_adj, mods= ~ hdi,
+            data = data, measure = "PLO", method = "PM", subset=index)$R2
+  m2 <- rma(xi = asym_sp_num_adj, ni = sp_num_adj, mods= ~ dma,
+            data = data, measure = "PLO", method = "PM", subset=index)$R2
+  m3 <- rma(xi = asym_sp_num_adj, ni = sp_num_adj, mods= ~ cvdr,
+            data = data, measure = "PLO", method = "PM", subset=index)$R2
+  return(c(m1-m2, m1-m3, m2-m3))
+}
+
+set.seed(1)
+boot_res <- boot(data, boot.fn, samples)
+boot_res$t0
+df <- data.frame(boot_res$t)
+colnames(df) <- c("hdi_dma", "hdi_cvdr", "dma_cvdr")   # "hdi_dma" column refers to the R2(hdi) - R2(dma)
+
+# Performing Wilcox one-tailed test to see if the mean of the difference in R2 is greater than a specified value
+wilcox_onetailed <- wilcox.test(df$hdi_dma, alternative = "greater", mu = 10)
+wilcox_onetailed
+
+# However, choosing any arbitrary value (mu > value) for null hypothesis would not be a good idea
+# Instead we can show box plots of the columns to show how the median of the difference is far larger than zero
+
+```
+
+## 4.3. Box plots of the differences in the R2 (Figure S3B)
+```{r}
+data_long <- melt(df)
+
+plt <- ggplot(data_long[data_long$variable %in% c("hdi_dma", "hdi_cvdr", "dma_cvdr"), ], 
+              aes(x = variable, y = value, fill = variable)) +
+  geom_jitter(shape = 21, width = 0.3, size = 1.5, color = "black", fill = "grey") +
+  geom_boxplot(width = 0.6, color = "black", outlier.shape = NA, 
+               , alpha = 0.5, size = 1, fatten=1) +
+  theme_minimal() +
+  theme(axis.text = element_text(size = 11, colour = "black"),
+        axis.title = element_blank(),
+        axis.ticks = element_line(linewidth = 0.5, colour="black"),
+        panel.border = element_rect(colour = "black", fill=NA, size=0.75),
+        legend.position = "none")
+plt
+
+```
+It is clear from the boxplots that R2(HDI)-R2(DMA), R2(HDI)-R2(CVDR), and\n
+R2(DMA)-R2(CVDR) is significantly greater than 0, with HDI showing the highest\n
+R2. Now I will compare the best model (univariate model with HDI) with the\n
+multivariate models including HDI.
+
+## 4.4 Comparing the univariate model with HDI with multivariate models with HDI
+### 4.4.1. Scaling of the predictors
+```{r}
+# data$age_65_s <- scale(data$age_65, center = TRUE)
+data$dma_s <- scale(data$dma, center = TRUE)
+data$hdi_s <- scale(data$hdi, center=TRUE)
+data$cvdr_s <- scale(data$cvdr, center=TRUE)
+```
+
+### 4.4.2. Comparison
+```{r}
+samples <- 500
+# hdi
+boot.fn = function(data, index){
+  m1 <- rma(xi = asym_sp_num_adj, ni = sp_num_adj, mods= ~ hdi_s,
+            data = data, measure = "PLO", method = "PM", subset=index)$R2
+  m2 <- rma(xi = asym_sp_num_adj, ni = sp_num_adj, mods= ~ hdi_s + dma_s,
+            data = data, measure = "PLO", method = "PM", subset=index)$R2
+  m3 <- rma(xi = asym_sp_num_adj, ni = sp_num_adj, mods= ~ hdi_s + cvdr_s,
+            data = data, measure = "PLO", method = "PM", subset=index)$R2
+  m4 <- rma(xi = asym_sp_num_adj, ni = sp_num_adj, mods= ~ hdi_s + dma_s + cvdr_s,
+            data = data, measure = "PLO", method = "PM", subset=index)$R2
+  return(c(m1-m2, m1-m3, m1-m4))
+}
+
+set.seed(1)
+boot_res <- boot(data, boot.fn, samples)
+boot_res$t0
+df2 <- data.frame(boot_res$t)
+colnames(df2) <- c("hdi_dma", "hdi_cvdr", "hdi_dma_cvdr")   # "hdi_dma" column refers to the R2(hdi) - R2(dma)
+
+# Performing Wilcox one-tailed test to see if the mean of the difference in R2 is greater than a specified value
+wilcox_onetailed <- wilcox.test(df2$hdi_dma, alternative = "greater", mu = 10)
+wilcox_onetailed
+
+wilcox_onetailed <- wilcox.test(df2$hdi_cvdr, alternative = "greater", mu = 10)
+wilcox_onetailed
+
+wilcox_onetailed <- wilcox.test(df2$hdi_dma_cvdr, alternative = "greater", mu = 10)
+wilcox_onetailed
+
+```
+All the Wilcox test have p-value ~ 1. Thus, we cannot reject the null hypotheses\n
+that uivariate and multivariate models involving HDI are different.
+
+### 4.4.3. Box plots for difference in the R2 (Figure S3C)
+```{r}
+data_long <- melt(df2)
+
+# For E and F in a single box
+plt <- ggplot(data_long[data_long$variable %in% c("hdi_dma", "hdi_cvdr", "hdi_dma_cvdr"), ], 
+              aes(x = variable, y = value, fill = variable)) +
+  geom_jitter(shape = 21, width = 0.3, size = 1.5, color = "black", fill = "grey") +
+  geom_boxplot(width = 0.6, color = "black", outlier.shape = NA, 
+               , alpha = 0.5, size = 1, fatten=1) +
+  scale_fill_manual("values" = c("hdi_dma" = "red",
+                                 "hdi_cvdr" = "orange",
+                                 "hdi_dma_cvdr" = "yellow")) +
+  theme_minimal() +
+  theme(axis.text = element_text(size = 11, colour = "black"),
+        # axis.text.x = element_blank(),
+        axis.title = element_blank(),
+        axis.ticks = element_line(linewidth = 0.5, colour="black"),
+        panel.border = element_rect(colour = "black", fill=NA, size=s_border),
+        legend.position = "none")
+plt
+
+```
+## 4.5. R2 versus bootstrap samples
+This is to get the sample size greater to which results will remain constant.
+```{r}
+samples <- c(1, seq(10, 500, by = 10))
+samples
+# hdi
+boot.fn = function(data, index){
+  m1 <- rma(xi = asym_sp_num_adj, ni = sp_num_adj, mods= ~ hdi_s,
+            data = data, measure = "PLO", method = "PM", subset=index)$R2
+  m2 <- rma(xi = asym_sp_num_adj, ni = sp_num_adj, mods= ~ dma_s,
+            data = data, measure = "PLO", method = "PM", subset=index)$R2
+  m3 <- rma(xi = asym_sp_num_adj, ni = sp_num_adj, mods= ~ cvdr_s,
+            data = data, measure = "PLO", method = "PM", subset=index)$R2
+  m4 <- rma(xi = asym_sp_num_adj, ni = sp_num_adj, mods= ~ hdi_s + dma_s,
+            data = data, measure = "PLO", method = "PM", subset=index)$R2
+  m5 <- rma(xi = asym_sp_num_adj, ni = sp_num_adj, mods= ~ hdi_s + cvdr_s,
+            data = data, measure = "PLO", method = "PM", subset=index)$R2
+  m6 <- rma(xi = asym_sp_num_adj, ni = sp_num_adj, mods= ~ dma_s + cvdr_s,
+            data = data, measure = "PLO", method = "PM", subset=index)$R2
+  m7 <- rma(xi = asym_sp_num_adj, ni = sp_num_adj, mods= ~ hdi_s + dma_s + cvdr_s,
+            data = data, measure = "PLO", method = "PM", subset=index)$R2
+  return(c(m1, m2, m3, m4, m5, m6, m7))
+}
+
+data_boot <- data.frame(matrix(0, ncol = 7, nrow = length(samples)))
+set.seed(1)
+for (i in 1:length(samples)){
+  boot_res <- boot(data, boot.fn, samples[i])
+  for (j in 1:ncol(data_boot))
+    data_boot[i,j] <- mean(boot_res$t[,j])
+}
+
+```
+## 4.5.1. Plotting R2 versus bootstrap samples (Figure S3A)
+```{r}
+s_line = 1.5
+colnames(data_boot) <- c(paste0("m", seq(1, 7, by = 1)))
+data_boot$samples <- samples
+plt <- ggplot(data_boot, aes(x = samples)) + 
+  geom_line(aes(y = data_boot[,1]), linewidth = s_line, color = "black") +
+  geom_line(aes(y = data_boot[,2]), linewidth = s_line, color = "yellow3") +
+  geom_line(aes(y = data_boot[,3]), linewidth = s_line, color = "tomato") +
+  geom_line(aes(y = data_boot[,4]), linewidth = s_line, color = "purple3") +
+  geom_line(aes(y = data_boot[,5]), linewidth = s_line, color = "seagreen4") +
+  geom_line(aes(y = data_boot[,6]), linewidth = s_line, color = "royalblue") +
+  geom_line(aes(y = data_boot[,7]), linewidth = s_line, color = "darkgrey") +
+  
+  theme_minimal() +
+  theme(
+    axis.text = element_text(size = 11, color = "black"),
+    axis.title = element_blank(),
+    axis.ticks = element_line(linewidth = 0.5, colour="black"),
+    panel.border = element_rect(colour = "black", fill=NA, size=s_border),
+    legend.position = "top")
+plt
+
+```
+## 4.6. Bootstrapping for model selection (AICc)
+I will compare AICc of all the models with different combination of 26 studies
+### 4.6.1. Count of predictors in the best models (based on AICc)
+```{r}
+boot_sample <- 500
+
+library("MuMIn")
+eval(metafor:::.MuMIn)
+
+res_list <- vector("list", length=boot_sample)
+
+# One can look into the naming the the model by uncommenting the following command:
+# res_list[[1]]. Model contains the predictor(s) with non-NA values.
+set.seed(1)
+boot.fn = function(data, index){
+  mx = rma(xi = asym_sp_num_adj, ni = sp_num_adj, mods= ~ cvdr_s + dma_s + hdi_s,
+           data = data, measure = "PLO", method = "PM", subset=index)
+  resx <- dredge(mx, trace=2)  # Gives a matrix of performance of all the models
+  return(data.frame(model = rownames(resx),
+                    coef_cvdr = resx$cvdr_s, coef_dma = resx$dma_s,
+                    coef_hdi = resx$hdi_s,
+                    AICc = resx$AICc, delta = resx$delta))}
+
+for (i in 1:boot_sample){
+  # set.seed(1)
+  # ind_list[[i]] <- sample(nrow(data), nrow(data), replace=T)
+  res_list[[i]] <- boot.fn(data, sample(nrow(data), nrow(data), replace=T))
+}
+
+# subx <- subset(res_list[[boot_sample]], delta <= 2)
+res_list2 <- res_list
+sub_list <- vector("list", length = boot_sample)
+count_list <- vector("list", length = boot_sample)
+mod_list <- vector("list", length = boot_sample)
+
+for (i in 1:boot_sample){
+  res_list2[[i]]$model <- as.numeric(res_list2[[i]]$model)
+  sub_list[[i]] <- subset(res_list2[[i]], delta <= 2)
+  mod_list[[i]] <- res_list[[i]]$model
+  count_list[[i]] <- data.frame(c_cvdr = sum(!is.na(sub_list[[i]]$coef_cvdr)),
+                                c_dma = sum(!is.na(sub_list[[i]]$coef_dma)),
+                                c_hdi = sum(!is.na(sub_list[[i]]$coef_hdi)))
+}
+
+count_data <- do.call(rbind, count_list)
+summary(count_data)
+count_sum <- data.frame(colSums(count_data))
+colnames(count_sum) <- "Count"
+count_sum$Predictor <- c("CVDR", "DMA", "HDI")
+count_sum
+```
+Among all the (univariate and multivariate) models, HDI showed up 645 times,\n
+DMA showed up 99 times, and CVDR showed up 76 times.\n
+Now, I will find the count of models.
+
+### 4.6.2. Counts of models among the best models (delta <= 2) (Figure S3D)
+```{r}
+mod_list2 <- vector("list", length=boot_sample)
+for (i in 1:boot_sample)
+  mod_list2[[i]] <- res_list2[[i]] %>% filter(delta <= 2)   
+
+# Define the dimensions of the dataframe
+num_rows <- boot_sample
+num_cols <- nrow(res_list[[1]])
+
+data_matrix <- matrix(NA, nrow = num_rows, ncol = num_cols)
+
+colnames(data_matrix) <- paste0("m", 1:num_cols)
+
+rownames(data_matrix) <- paste0("s", 1:num_rows)
+
+mod_data <- as.data.frame(data_matrix)
+
+for (i in 1:boot_sample){
+  le <- mod_list2[[i]]$model
+  for (j in 1:length(le))
+    mod_data[i,j] = le[j]
+}
+
+t1 <- table(as.matrix(mod_data))
+t1_data <- data.frame(t1)
+colnames(t1_data) <- c("Model", "Count")
+
+# Plots
+# Count of occurence of model in each sample of bootstrapping data
+p1 <- ggplot(t1_data[2:6,], aes(y = Count)) + 
+  geom_bar(aes(x = Model), stat="identity", color = "black", fill = "skyblue") +
+  theme_minimal() +
+  scale_x_discrete(labels = c("2" = "C", "3" = "D", "5" = "H",
+                              "6" = "H + C", "7" = "H + D")) +
+  theme(
+    axis.text = element_text(size = 11, color = "black"),
+    axis.title = element_blank(),
+    axis.ticks = element_line(linewidth = 0.5, colour="black"),
+    panel.border = element_rect(colour = "black", fill=NA, size=s_border),
+    legend.position = "none")
+p1
+```
+
+### 4.6.3. Comparing the AICc for all the models for the original dataset (Figure S3E)
+```{r}
+library("MuMIn")
+eval(metafor:::.MuMIn)
+
+mx = rma(xi = asym_sp_num_adj, ni = sp_num_adj, mods= ~ cvdr_s + dma_s + hdi_s,
+         data = data, measure = "PLO", method = "PM")
+resx <- dredge(mx, trace=2)  # Gives a matrix of performance of all the models
+resx$model <- rownames(resx)
+resx <- resx[order(resx$AICc), ] # Sort data by AICc in increasing order
+
+# Count of occurence of model in each sample of bootstrapping data
+p2 <- ggplot(resx, aes(x = reorder(model, AICc), y = AICc)) + 
+  geom_bar(stat = "identity", color = "black", fill = "lightsalmon") +
+  theme_minimal() +
+  scale_x_discrete(labels = c("1" = "Null", "2" = "C", "3" = "D", "4" = "C + D",
+                              "5" = "H", "6" = "H + C", "7" = "H + D", 
+                              "8" = "H + D + C")) +
+  theme(
+    axis.text = element_text(size = 11, color = "black"),
+    axis.title = element_blank(),
+    # axis.text.x = element_blank(),
+    axis.ticks = element_line(linewidth = 0.5, colour="black"),
+    # axis.ticks.x = element_blank(),
+    panel.border = element_rect(colour = "black", fill=NA, size=s_border),
+    legend.position = "none")
+
+p2
+
+```
+
+## 4.7. Comparing R2 of age65 and DMA (Figure S11)
+```{r}
+plt <- ggplot(df_R2_ci[c(2,4),]) +
+  geom_bar(aes(x = pred, y = mean_R2), stat = "identity", color = "black", fill = "grey") +
+  geom_errorbar(aes(x = pred, ymin = ci_lo, ymax = ci_up), color="black",width=0.2,size=1) +
+  theme_bw() + 
+  scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, by = 20)) +
+  theme(panel.background = element_rect(fill = "transparent"),
+        plot.background = element_rect(fill='transparent', color=NA),
+        panel.border = element_rect(colour = "black", fill=NA, size=0.75),
+        legend.position = "none"
+  ) 
+plt
+
+# Paired Samples Wilcoxon Test to check the significance of difference between age65 and dma
+wilcox_age65_dma <- wilcox.test(df_R2$age65, df_R2$dma)
+wilcox_age65_dma
+```
+# 5. Correlation with number of symptoms considered in the studies
+## 5.1. Data manipulation
+```{r}
+sym_mat = read.csv(here("data", "for_calculations", "symptom_matrix.csv"), header = TRUE)
+
+sym_mat <- sym_mat %>% 
+  filter(!Country %in% c("Guinea", "Iran", "Maldives"))
+symptoms <- sym_mat$Country
+
+sym_mat[-1] <- lapply(sym_mat[-1], function(x) ifelse(x %in% c("y", "Y"), 1, 0))
+
+sym_mat <- sym_mat[,-1]
+rownames(sym_mat) <- symptoms
+
+```
+## 5.2. Heatmap (Figure S9A)
+```{r}
+
+library(plotly)
+library(heatmaply)
+library(RColorBrewer)
+
+p1 <- heatmaply(sym_mat, Colv = NA, Rowv = NA,
+                margins = c(60,50,40,20), 
+                colors = YlOrRd,
+                hide_colorbar = TRUE,
+                fontsize_row = 10, 
+                fontsize_col = 10,
+                grid_color = "black",
+                grid_size = 0.01,
+                column_text_angle = 90,
+                axis_text_color = "black"
+                # file = "heatmaply_plot.pdf"
+)
+p1
+
+```
+
+## 5.3. Correlation with number of symptoms (Figure S9B)
+
+```{r}
+cor <- cor.test(data$num_sym, data$psi, method = "spearman")
+# This automatically removes countries with missing values
+cor
+
+p2 <- ggplot(data, aes(x=num_sym, y=psi)) +
+  geom_point(size=2, colour='black')+
+  theme_classic() +  # theme_minimal() + 
+  scale_y_continuous(breaks=seq(0.25,1,by=0.25)) +
+  scale_x_continuous(breaks=seq(4,12,by=4)) +
+  
+  # coord_flip() +
+  theme(axis.line = element_blank(),
+        axis.title = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_line(size = 0.5, colour="black"),
+        axis.ticks.length=unit(0.1,"inch"),
+        panel.border = element_rect(colour = "black", fill=NA, size=1),
+        plot.margin = margin(0.1,0.1,0,0, "in")  # top, right, bottom, left
+  )
+
+p2
+
+```
+
